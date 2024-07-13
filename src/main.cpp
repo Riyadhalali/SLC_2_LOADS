@@ -25,6 +25,8 @@ upsmode: 29
 #include <Wire.h>
 #include <EEPROM.h>
 #include<avr/wdt.h>
+#include <avr/sleep.h>
+
 //----------------------------LCD--------------------
 //const int rs = 8, en =9, d4 = 10, d5 = 11, d6 = 12, d7 = 13;
 const int rs = A3, en =A2, d4 = 13, d5 = 12, d6 = 11, d7 = 10;
@@ -40,8 +42,8 @@ char t[32];
  #define Decrement 0
  #define Increment 1
  #define AC_Available 3
- #define Exit A0
  #define Backlight 9
+  #define Exit A0
 
 //-----------------------------------------Variables----------------------------
 //unsigned short old_time_compare_pv,old_time_update_pv,old_time_screen_1=0,old_time_screen_2=0; // to async
@@ -121,6 +123,9 @@ uint32_t currentMillis_1=0,previousMiliis_1=0; // for flashing display
 uint32_t currentMillis_2=0,previousMiliis_2=0; // for flashing display 
 
 
+uint32_t samplesReading=0;
+float sum=0 , Battery[500];
+char i=0; 
 //-------------------------------------------------------------------------------------------------------
 //-----------------------------------Functions---------------------------------
 void EEPROM_Load();
@@ -185,6 +190,8 @@ void AutoRunWithOutBatteryProtection();
 void Timer_Seconds(); // timer for counting seconds 
 void CheckWireTimeout();
 void WDT_Disable();
+int analogNoiseReducedRead(int pinNumber); 
+void TimerBattery();
 //---------------------------------------------------------------------------------------
 void Gpio_Init()
 {
@@ -194,14 +201,14 @@ pinMode(2,INPUT);  //Set as input
 pinMode(1,INPUT);  //Decrement as input   
 pinMode(0,INPUT);  //Increment as input  
 pinMode(3,INPUT);  //ac_available as input  
-pinMode(A0,INPUT);  // set Exit as input 
-pinMode(A1,INPUT);  // set Exit as input 
 pinMode(5,OUTPUT);  // backlight
+pinMode(A0,INPUT);  // set Exit as input 
 }
 //-------------------------------------Config---------------------------------------------------
 void Config()
 {
 Gpio_Init();
+TimerBattery();  // for starting reading 
 digitalWrite(Backlight,1);
 lcd.begin(16,2);
 lcd.clear();
@@ -215,6 +222,7 @@ rtc.begin();
 Wire.setWireTimeout(3000,true);   //refe : https://www.fpaynter.com/2020/07/i2c-hangup-bug-cured-miracle-of-miracles-film-at-11/
 Wire.clearWireTimeoutFlag();
 //EEPROM.begin();  
+
 }
 //----------------------------------Config Interrupts-----------------------------------
 void Config_Interrupts()
@@ -308,21 +316,10 @@ lcd.print(t);
 void Read_Battery()
 {
 
-float sum=0 , Battery[10];
-char i=0;
-
 //Vadc=Vin* (4.7K /100K) => Vin=(104.7/4.7k) * VADC
 //100k*1.01=99K , 4.7K *1.01=4.653
 ///Vin_Battery=((10.5/0.5)*Battery_Voltage); // 0.3 volt error from reading
-for ( i=0; i<10 ; i++)
-{
-ADC_Value=analogRead(A1);
-Battery_Voltage=(ADC_Value *5.0)/1024.0;
-Battery[i]=((10.5/0.5)*Battery_Voltage);
-delay(50);
-sum+=Battery[i];
-}
-Vin_Battery= sum/10.0 ;
+//ADC_Value = analogNoiseReducedRead(1);
 lcd.setCursor(0,1);
 lcd.print("V=");
 dtostrf(Vin_Battery,4,1,txt);
@@ -360,7 +357,7 @@ void LCD_Clear(unsigned short Row, unsigned short Start, unsigned short End)
 void CheckForSet()
 {
 
-if (digitalRead(Set)==0 && digitalRead(Exit)==0) 
+if (digitalRead(Set)==0 ) 
 {
 delay(1500);
 SetUpProgram();
@@ -852,7 +849,7 @@ while (digitalRead(Set)==1 )
 lcd.setCursor(0,0);
 lcd.print("[5] LV1 ");
 dtostrf(Mini_Battery_Voltage,4,1,txt);
-lcd.setCursor(7,0);
+lcd.setCursor(8,0);
 lcd.print(txt);
 lcd.setCursor(12,0);
 lcd.print("V");
@@ -867,7 +864,7 @@ while (digitalRead(Increment) == 1 || digitalRead(Decrement)==1)
   lcd.setCursor(0,0);
 lcd.print("[5] LV1 ");
 dtostrf(Mini_Battery_Voltage,4,1,txt);
-lcd.setCursor(7,0);
+lcd.setCursor(8,0);
 lcd.print(txt);
 lcd.setCursor(12,0);
 lcd.print("V");
@@ -896,7 +893,7 @@ while (digitalRead(Set)==1 )
 lcd.setCursor(0,0);
 lcd.print("[5] LV2 ");
 dtostrf(Mini_Battery_Voltage_T2,4,1,txt);
-lcd.setCursor(7,0);
+lcd.setCursor(8,0);
 lcd.print(txt);
 lcd.setCursor(12,0);
 lcd.print("V");
@@ -911,7 +908,7 @@ while (digitalRead(Increment) == 1 || digitalRead(Decrement)==1)
   lcd.setCursor(0,0);
 lcd.print("[5] LV2 ");
 dtostrf(Mini_Battery_Voltage_T2,4,1,txt);
-lcd.setCursor(7,0);
+lcd.setCursor(8,0);
 lcd.print(txt);
 lcd.setCursor(12,0);
 lcd.print("V");
@@ -943,7 +940,7 @@ while (digitalRead(Set)==1 )
 lcd.setCursor(0,0);
 lcd.print("[6] HV1 ");
 dtostrf(StartLoadsVoltage,4,1,txt);
-lcd.setCursor(7,0);
+lcd.setCursor(8,0);
 lcd.print(txt);
 lcd.setCursor(12,0);
 lcd.print("V");
@@ -957,7 +954,7 @@ while (digitalRead(Increment) == 1 || digitalRead(Decrement)==1)
 lcd.setCursor(0,0);
 lcd.print("[6] HV1 ");
 dtostrf(StartLoadsVoltage,4,1,txt);
-lcd.setCursor(7,0);
+lcd.setCursor(8,0);
 lcd.print(txt);
 lcd.setCursor(12,0);
 lcd.print("V");
@@ -985,7 +982,7 @@ while (digitalRead(Set)==1 )
 lcd.setCursor(0,0);
 lcd.print("[6] HV2 ");
 dtostrf(StartLoadsVoltage_T2,4,1,txt);
-lcd.setCursor(7,0);
+lcd.setCursor(8,0);
 lcd.print(txt);
 lcd.setCursor(12,0);
 lcd.print("V");
@@ -999,7 +996,7 @@ while (digitalRead(Increment) == 1 || digitalRead(Decrement)==1)
   lcd.setCursor(0,0);
 lcd.print("[6] HV2 ");
 dtostrf(StartLoadsVoltage_T2,4,1,txt);
-lcd.setCursor(7,0);
+lcd.setCursor(8,0);
 lcd.print(txt);
 lcd.setCursor(12,0);
 lcd.print("V");
@@ -1122,7 +1119,7 @@ while (digitalRead(Set)==1 )
 	 if(currentMillis_1-previousMiliis_1 >=1000)
 	 {
 	 previousMiliis_1=currentMillis_1;
-   lcd.setCursor(9,0);
+   lcd.setCursor(4,0);
 	 lcd.print("    ");
  	 }
 
@@ -1173,7 +1170,7 @@ while (digitalRead(Set)==1 )
 	 if(currentMillis_1-previousMiliis_1 >=1000)
 	 {
 	 previousMiliis_1=currentMillis_1;
-   lcd.setCursor(4,0);
+   lcd.setCursor(9,0);
 	 lcd.print("    ");
  	 }
 
@@ -1886,6 +1883,7 @@ ISR(TIMER1_COMPA_vect)
 {
 TCNT1=0;   // very important 
   UpdateScreenTime++;
+  
   if (CountSecondsRealTime==1) SecondsRealTime++;                                     // for counting real time for  grid count
   if (CountSecondsRealTimePv_ReConnect_T1==1) SecondsRealTimePv_ReConnect_T1++; // for counting real time for pv connect
   if(CountSecondsRealTimePv_ReConnect_T2==1) SecondsRealTimePv_ReConnect_T2++; // for counting real timer 
@@ -1937,6 +1935,7 @@ void CheckWireTimeout()
 	}
 }
 //-----------------------------------Watch Dog timer----------------------------
+
 void WDT_Enable()
 {
 //asm cli;
@@ -1973,6 +1972,7 @@ WDTCSR = 0x00;
 //asm sei;
 sei();
 }
+
 //---------------------------------------Check For Params-----------------------------------------
 void CheckForParams()
 {
@@ -2088,9 +2088,59 @@ if (UPSMode < 0 || UPSMode > 1 )
   EEPROM_Load();
 }
 }
+
+
+//-----------------------------------------------------------
+
+void TimerBattery()
+{
+noInterrupts();
+TCCR2A=0; // very imprtant 
+TCCR2B = 0; // very important 
+OCR2A=50; // 10 ms 
+TCCR2B |=  (1<< CS20) | (1 << CS21) | (1<<CS22) ;  // prescalar 1024
+TIMSK2 |= (1 << OCIE2A) ;  // enabling interrupts overflow 
+interrupts(); 
+}
+
+ISR(TIMER2_COMPA_vect)
+{
+TCNT2=0; // very important 
+samplesReading++;
+ADC_Value=analogRead(A1);
+Battery_Voltage=(ADC_Value *5.0)/1024.0;
+Battery[samplesReading]=((10.5/0.5)*Battery_Voltage);
+sum+=Battery[samplesReading];
+if (samplesReading==500)
+{
+Vin_Battery=sum / 500.0; 
+sum=0;
+samplesReading=0;
+}
+}
+int analogNoiseReducedRead(int pinNumber)
+{
+  int reading;
+  ADCSRA |= _BV( ADIE );             //Set ADC interrupt
+  set_sleep_mode(SLEEP_MODE_ADC);    //Set sleep mode
+  reading = analogRead(pinNumber);   //Start reading
+  sleep_enable(); 
+  do
+  {                                  //Loop until reading is completed
+    sei();                           //Enable interrupts
+    sleep_mode();                    //Go to sleep
+    cli();                           //Disable interrupts
+  } while(((ADCSRA&(1<<ADSC))!= 0)); //Loop if the interrupt that woke the cpu was something other than the ADC finishing the reading
+  
+  sleep_disable();                   //Disable sleep
+  ADCSRA &= ~ _BV( ADIE );           //Clear ADC interupt
+  sei();                             //Enable interrupts
+  return(reading);
+}
 //---------------------------------------MAIN LOOP-------------------------------------------------
 void setup() {
   // put your setup code here, to run once:
+    
   Config();
   Config_Interrupts();
   EEPROM_Load();
