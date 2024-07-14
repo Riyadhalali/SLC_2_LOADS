@@ -43,7 +43,8 @@ char t[32];
  #define Increment 1
  #define AC_Available 3
  #define Backlight 9
-  #define Exit A0
+ #define Exit A0
+ #define Flash 4
 
 //-----------------------------------------Variables----------------------------
 //unsigned short old_time_compare_pv,old_time_update_pv,old_time_screen_1=0,old_time_screen_2=0; // to async
@@ -122,10 +123,14 @@ unsigned int CountCutSecondsRealTime_T1=0,CountCutSecondsRealTime_T2=0; // time 
 uint32_t currentMillis_1=0,previousMiliis_1=0; // for flashing display 
 uint32_t currentMillis_2=0,previousMiliis_2=0; // for flashing display 
 
-
+//-> for battery sampling 
 uint32_t samplesReading=0;
 float sum=0 , Battery[500];
 char i=0; 
+char programNumber=1; // for setup program 
+//-> FOR RELAY STATES 
+char relayState[32];
+char relayState_1=0,relayState_2=0,relayState_3=0; // for saving relay state
 //-------------------------------------------------------------------------------------------------------
 //-----------------------------------Functions---------------------------------
 void EEPROM_Load();
@@ -192,6 +197,8 @@ void CheckWireTimeout();
 void WDT_Disable();
 int analogNoiseReducedRead(int pinNumber); 
 void TimerBattery();
+void SetVoltageMode(); 
+void SetUPSMode();
 //---------------------------------------------------------------------------------------
 void Gpio_Init()
 {
@@ -203,6 +210,7 @@ pinMode(0,INPUT);  //Increment as input
 pinMode(3,INPUT);  //ac_available as input  
 pinMode(5,OUTPUT);  // backlight
 pinMode(A0,INPUT);  // set Exit as input 
+pinMode(4,OUTPUT);
 }
 //-------------------------------------Config---------------------------------------------------
 void Config()
@@ -248,6 +256,7 @@ if(digitalRead(AC_Available)==1 && Timer_isOn==0  && RunLoadsByBass==0 && RunOnB
 SecondsRealTime=0;
 CountSecondsRealTime=0;
 digitalWrite(Relay_L_Solar,0);
+relayState_1=0;
 
 }
 
@@ -256,6 +265,7 @@ if (digitalRead(AC_Available)==1 && Timer_2_isOn==0 && RunLoadsByBass==0 && RunO
 CountSecondsRealTime=0;
 SecondsRealTime=0;
 digitalWrite(Relay_L_Solar_2,0);
+relayState_2=0;
 
 }
 
@@ -270,6 +280,8 @@ CountSecondsRealTimePv_ReConnect_T1=0;
 CountSecondsRealTimePv_ReConnect_T2=0;
 digitalWrite(Relay_L_Solar,0);
 digitalWrite(Relay_L_Solar_2,0);
+relayState_1=0;
+relayState_2=0;
 
 }
 //lcd.clear();
@@ -280,7 +292,7 @@ void Screen_1()
   //noInterrupts();
 if (RunLoadsByBass==0) 
 {
-  lcd.setCursor(13,0);
+  lcd.setCursor(15,0);
   lcd.print("  ");
 }   else
 {
@@ -294,12 +306,16 @@ Read_Time();
 else
 {
   lcd.setCursor(0,0);
-  lcd.print("Voltage Mode");
+  lcd.print("V-MODE");
 
 }
 
 Read_Battery();
 CalculateAC();
+//-> DISPLAY RELAY STATES 
+sprintf((char*)relayState,"R=%01d%01d",relayState_1, relayState_2);
+lcd.setCursor(11,0);
+lcd.print(relayState);
 //interrupts(); 
 //LCD_CMD(_LCD_RETURN_HOME);    // to keep display in its location
 }
@@ -307,7 +323,7 @@ CalculateAC();
 void Read_Time()
 {
 DateTime now = rtc.now();
-sprintf(t, "Time:%02d:%02d:%02d", now.hour(), now.minute(), now.second());
+sprintf(t, "%02d:%02d:%02d", now.hour(), now.minute(), now.second());
 lcd.setCursor(0,0);
 lcd.print(t);
 }
@@ -367,17 +383,149 @@ SetUpProgram();
 void SetUpProgram()
 {
 //Delay_ms(500);
-if (digitalRead(Set)==0 )
-{
 digitalWrite(Backlight,HIGH);
 lcd.clear();
 lcd.setCursor(0,0);
 lcd.print("Setup Program");
+programNumber=1;
+digitalWrite(Flash,0); // turn off flash
 delay(1500);
 //---------------------------------Enter Programs ------------------------------
 //-> enter setup mode and don't exit it until the user hit set button
-while (digitalRead(Set)==1 )
+while (digitalRead(Set)==1)
 {
+
+switch (programNumber)
+{
+case 1: 
+  sprintf(txt,"[%1d] H:%02d-M:%02d   ",programNumber,hours_lcd_1,minutes_lcd_1);
+   lcd.setCursor(0,0);
+   lcd.print(txt);
+   while (digitalRead(Set)==0)
+   {
+   SetTimerOn_1();
+   }
+   break ; 
+case 2: 
+   sprintf(txt,"[%1d] H:%02d-M:%02d   ",programNumber,hours_lcd_2,minutes_lcd_2);
+   lcd.setCursor(0,0);
+   lcd.print(txt);
+   while (digitalRead(Set)==0)
+   {
+   SetTimerOff_1();
+   }
+   break ; 
+case 3: 
+   sprintf(txt,"[%1d] H:%02d-M:%02d   ",programNumber,hours_lcd_timer2_start,minutes_lcd_timer2_start);
+   lcd.setCursor(0,0);
+   lcd.print(txt);
+   while (digitalRead(Set)==0)
+   {
+   SetTimerOn_2();
+   }
+   break ; 
+
+case 4 :
+   sprintf(txt,"[%1d] H:%02d-M:%02d   ",programNumber,hours_lcd_timer2_stop,minutes_lcd_timer2_stop);
+   lcd.setCursor(0,0);
+   lcd.print(txt);
+   while (digitalRead(Set)==0)
+   {
+   SetTimerOff_2();
+   }
+   break ; 
+case 5 :
+  sprintf(txt,"[%1d] Low Voltage   ",programNumber,Mini_Battery_Voltage);
+   lcd.setCursor(0,0);
+   lcd.print(txt);
+   while (digitalRead(Set)==0)
+   {
+   SetLowBatteryVoltage();
+   }
+   break ; 
+case 6 :
+   sprintf(txt,"[%1d] High Voltage     ",programNumber,StartLoadsVoltage);
+   lcd.setCursor(0,0);
+   lcd.print(txt);
+   while (digitalRead(Set)==0)
+   {
+   SetStartUpLoadsVoltage();
+   }
+   break ; 
+case 7 :
+   sprintf(txt,"[%1d] On Delay     ",programNumber,startupTIme_1);
+   lcd.setCursor(0,0);
+   lcd.print(txt);
+   while (digitalRead(Set)==0)
+   {
+    Startup_Timers();
+   }
+   break ; 
+case 8 :
+  sprintf(txt,"[%1d] Timer Mode  ",programNumber);
+   lcd.setCursor(0,0);
+   lcd.print(txt);
+   while (digitalRead(Set)==0)
+   {
+   SetVoltageMode();
+   }
+   break ; 
+
+case 9 :
+    sprintf(txt,"[%1d] UtilityMode  ",programNumber);
+   lcd.setCursor(0,0);
+   lcd.print(txt);
+   while (digitalRead(Set)==0)
+   {
+   SetUPSMode();
+   }
+   break ; 
+case 10 :
+   DateTime now = rtc.now();
+   set_ds1307_hours=now.hour();
+   set_ds1307_minutes=now.minute();
+   set_ds1307_day=now.day();
+   set_ds1307_month=now.month();
+   set_ds1307_year=now.year();
+   sprintf((char*)txt,"[%2d] H:%02d-M:%02d  ",programNumber,set_ds1307_hours,set_ds1307_minutes);
+   lcd.setCursor(0,0);
+   lcd.print(txt);
+   while (digitalRead(Set)==0)
+   {
+   SetDS1307_Time();    
+   }
+   break ;  
+
+   default: 
+   sprintf(txt,"[%1d] H:%02d-M:%02d   ",programNumber,hours_lcd_1,minutes_lcd_1);
+   lcd.setCursor(0,0);
+   lcd.print(txt);
+   while (digitalRead(Set)==0)
+   {
+   SetTimerOn_1();
+   }
+   break ; 
+
+
+}   // end switch numbers 
+
+//---------------------------------------------NAVIGATION----------------------------------------
+while (digitalRead(Increment)==1 || digitalRead(Decrement)==1)
+{
+if (digitalRead(Increment)==1)
+{
+  delay(150);
+  programNumber++; 
+}
+if(digitalRead(Decrement)==1)
+{
+  delay(150);
+  programNumber--;  
+}
+if (programNumber>11)  programNumber=1;
+if (programNumber<1)   programNumber=1;
+} // end while increment and decrement 
+/*
 //-> Enter First Timer Setting and test for exit button at every screen moving in and out
 SetTimerOn_1();
 if (digitalRead(Exit)==1 )   break;     //break out of the while loop
@@ -399,19 +547,17 @@ lcd.clear();
 break;   // to break the while
 } // end while
 }    // end main if
-}
-
+*/
+}  // end main while 
+}  // end function 
 //-----------------------------Setting Hour Timer 1-----------------------------
 void SetTimerOn_1()
 {
-
-lcd.clear();
 delay(500);
 currentMillis_1=0,currentMillis_2=0;
 previousMiliis_1=0,previousMiliis_2=0;
 while (digitalRead(Set)==1 )
 {
-
 	 currentMillis_2=millis();
 	 if(currentMillis_2-previousMiliis_2 >=500)
 	 {
@@ -451,6 +597,7 @@ if (minutes_lcd_1>59)    minutes_lcd_1=0;
 if (minutes_lcd_1<0) minutes_lcd_1=0;
 SecondsRealTimePv_ReConnect_T1=0;
 Timer_isOn=0;
+relayState_1=0;
 } // end while increment and decrement
 } // end first while
 //******************************************************************************
@@ -475,11 +622,6 @@ while (digitalRead(Set)==1 )
    lcd.setCursor(4,0);
 	 lcd.print("    ");
  	 }
-
-if (digitalRead(Exit)==1 )
-{
-break;     //break out of the while loop
-}
  //-> to make sure that the value will never be changed until the user press increment or decrement
 while (digitalRead(Increment) == 1 || digitalRead(Decrement) == 1 )
 {
@@ -500,18 +642,20 @@ hours_lcd_1--;
 if  (hours_lcd_1>23) hours_lcd_1=0;
 if  (hours_lcd_1<0) hours_lcd_1=0;
 Timer_isOn=0; //
+relayState_1=0;
 SecondsRealTimePv_ReConnect_T1=0;
 } // end while increment
 } // end first while
+lcd.clear();
 EEPROM.write(0,hours_lcd_1); // save hours 1 timer tp eeprom
 EEPROM.write(1,minutes_lcd_1); // save minutes 1 timer tp eeprom
+delay(500);
 }
 //--------------------------------Set Timer 1 Off ------------------------------
 void SetTimerOff_1()
 {
-lcd.clear();
-delay(500);
 
+delay(500);
 currentMillis_1=0,currentMillis_2=0;
 previousMiliis_1=0,previousMiliis_2=0;
 while (digitalRead(Set)==1 )
@@ -562,6 +706,7 @@ if (minutes_lcd_2>59)    minutes_lcd_2=0;
 if (minutes_lcd_2<0) minutes_lcd_2=0;
 SecondsRealTimePv_ReConnect_T1=0;
 Timer_isOn=0;
+relayState_1=0;
 } // end while increment and decrement
 } // end first while
 //******************************************************************************
@@ -613,19 +758,19 @@ hours_lcd_2--;
 if  (hours_lcd_2>23) hours_lcd_2=0;
 if  (hours_lcd_2<0) hours_lcd_2=0;
 Timer_isOn=0; //
+relayState_1=0;
 SecondsRealTimePv_ReConnect_T1=0;
 } // end while increment
 } // end first while
+lcd.clear();
 EEPROM.write(2,hours_lcd_2); // save hours off  timer_1 to eeprom
 EEPROM.write(3,minutes_lcd_2); // save minutes off timer_1 to eeprom
+delay(500);
 }
 //---------------------------------Set Timer 2--------------------------------
 void SetTimerOn_2()
 {
-lcd.clear();
 delay(500);
-
-
 currentMillis_1=0,currentMillis_2=0;
 previousMiliis_1=0,previousMiliis_2=0;
 
@@ -673,6 +818,7 @@ minutes_lcd_timer2_start--;
 if (minutes_lcd_timer2_start>59)    minutes_lcd_timer2_start=0;
 if (minutes_lcd_timer2_start<0) minutes_lcd_timer2_start=0;
 Timer_2_isOn=0; //
+relayState_2=0;
 SecondsRealTimePv_ReConnect_T2=0;
 } // end while increment and decrement
 } // end first while
@@ -725,18 +871,19 @@ hours_lcd_timer2_start--;
 if  (hours_lcd_timer2_start>23) hours_lcd_timer2_start=0;
 if  (hours_lcd_timer2_start<0) hours_lcd_timer2_start=0;
 Timer_2_isOn=0; //
+relayState_2=0;
 SecondsRealTimePv_ReConnect_T2=0;
 } // end while increment
 } // end first while
+lcd.clear();
 EEPROM.write(4,hours_lcd_timer2_start); // save hours 1 timer tp eeprom
 EEPROM.write(5,minutes_lcd_timer2_start); // save minutes 1 timer tp eeprom
+delay(500);
 }
 //-----------------------------Set Timer 2 off-----------------------------
 void SetTimerOff_2()
 {
-lcd.clear();
 delay(500);
-
 currentMillis_1=0,currentMillis_2=0;
 previousMiliis_1=0,previousMiliis_2=0;
 
@@ -783,6 +930,7 @@ minutes_lcd_timer2_stop--;
 if (minutes_lcd_timer2_stop>59)    minutes_lcd_timer2_stop=0;
 if (minutes_lcd_timer2_stop<0) minutes_lcd_timer2_stop=0;
 Timer_2_isOn=0; //
+relayState_2=0;
 SecondsRealTimePv_ReConnect_T2=0;
 } // end while increment and decrement
 } // end first while
@@ -833,16 +981,19 @@ hours_lcd_timer2_stop--;
 if  (hours_lcd_timer2_stop>23) hours_lcd_timer2_stop=0;
 if  (hours_lcd_timer2_stop<0) hours_lcd_timer2_stop=0;
 Timer_2_isOn=0; //
+relayState_2=0;
 SecondsRealTimePv_ReConnect_T2=0;
 } // end while increment
 } // end first while
+lcd.clear();
 EEPROM.write(6,hours_lcd_timer2_stop); // save hours off  timer_1 to eeprom
 EEPROM.write(7,minutes_lcd_timer2_stop); // save minutes off timer_1 to eeprom
+delay(500); 
 }
 //--------------------------Set Battery Voltage---------------------------------
 void SetLowBatteryVoltage()
 {
-lcd.clear();
+
 delay(500);
 while (digitalRead(Set)==1 )
 {
@@ -852,30 +1003,25 @@ dtostrf(Mini_Battery_Voltage,4,1,txt);
 lcd.setCursor(8,0);
 lcd.print(txt);
 lcd.setCursor(12,0);
-lcd.print("V");
-if (digitalRead(Exit)==1 )
-{
-break;     //break out of the while loop
-}
-
+lcd.print("V   ");
 //-> to make sure that the value will never be changed until the user press increment or decrement
 while (digitalRead(Increment) == 1 || digitalRead(Decrement)==1)
 {
   lcd.setCursor(0,0);
-lcd.print("[5] LV1 ");
+lcd.print("[5] LV1");
 dtostrf(Mini_Battery_Voltage,4,1,txt);
 lcd.setCursor(8,0);
 lcd.print(txt);
 lcd.setCursor(12,0);
-lcd.print("V");
+lcd.print("V   ");
 if (digitalRead(Increment)==1 )
 {
-delay(200);
+delay(100);
 Mini_Battery_Voltage+=0.1;
 }
 if (digitalRead(Decrement)==1)
 {
-delay(200);
+delay(100);
 Mini_Battery_Voltage-=0.1;
 }
 //-> perfect
@@ -884,6 +1030,7 @@ if (Mini_Battery_Voltage<0) Mini_Battery_Voltage=0;
 } // end while increment and decrement
 }
 //- save to eeporm
+
 EEPROM.put(8, Mini_Battery_Voltage);
 //-------------------------------------T2-----------------------------------------
 
@@ -891,12 +1038,12 @@ delay(500);
 while (digitalRead(Set)==1 )
 {
 lcd.setCursor(0,0);
-lcd.print("[5] LV2 ");
+lcd.print("[5] LV2");
 dtostrf(Mini_Battery_Voltage_T2,4,1,txt);
 lcd.setCursor(8,0);
 lcd.print(txt);
 lcd.setCursor(12,0);
-lcd.print("V");
+lcd.print("V   ");
 if (digitalRead(Exit)==1 )
 {
 break;     //break out of the while loop
@@ -906,20 +1053,20 @@ break;     //break out of the while loop
 while (digitalRead(Increment) == 1 || digitalRead(Decrement)==1)
 {
   lcd.setCursor(0,0);
-lcd.print("[5] LV2 ");
+lcd.print("[5] LV2");
 dtostrf(Mini_Battery_Voltage_T2,4,1,txt);
 lcd.setCursor(8,0);
 lcd.print(txt);
 lcd.setCursor(12,0);
-lcd.print("V");
+lcd.print("V   ");
 if (digitalRead(Increment)==1 )
 {
-delay(200);
+delay(100);
 Mini_Battery_Voltage_T2+=0.1;
 }
 if (digitalRead(Decrement)==1)
 {
-delay(200);
+delay(100);
 Mini_Battery_Voltage_T2-=0.1;
 }
 //-> perfect
@@ -928,12 +1075,14 @@ if (Mini_Battery_Voltage_T2<0) Mini_Battery_Voltage_T2=0;
 } // end while increment and decrement
 }
 //-> save to eepprom
+lcd.clear();
 EEPROM.put(12,Mini_Battery_Voltage_T2);
+delay(500); 
 } //- end set low voltage
 //-----------------------------------Set Start Voltage----------------------------------------------
 void SetStartUpLoadsVoltage()
 {
-lcd.clear();
+
 delay(500);
 while (digitalRead(Set)==1 )
 {
@@ -943,7 +1092,7 @@ dtostrf(StartLoadsVoltage,4,1,txt);
 lcd.setCursor(8,0);
 lcd.print(txt);
 lcd.setCursor(12,0);
-lcd.print("V");
+lcd.print("V   ");
 if (digitalRead(Exit)==1 )
 {
 break;     //break out of the while loop
@@ -957,15 +1106,15 @@ dtostrf(StartLoadsVoltage,4,1,txt);
 lcd.setCursor(8,0);
 lcd.print(txt);
 lcd.setCursor(12,0);
-lcd.print("V");
+lcd.print("V   ");
 if (digitalRead(Increment)==1 )
 {
-delay(200);
+delay(100);
 StartLoadsVoltage+=0.1;
 }
 if (digitalRead(Decrement)==1)
 {
-delay(200);
+delay(100);
 StartLoadsVoltage-=0.1;
 }
 //-> perfect
@@ -985,7 +1134,7 @@ dtostrf(StartLoadsVoltage_T2,4,1,txt);
 lcd.setCursor(8,0);
 lcd.print(txt);
 lcd.setCursor(12,0);
-lcd.print("V");
+lcd.print("V   ");
 if (digitalRead(Exit)==1 )
 {
 break;     //break out of the while loop
@@ -999,15 +1148,15 @@ dtostrf(StartLoadsVoltage_T2,4,1,txt);
 lcd.setCursor(8,0);
 lcd.print(txt);
 lcd.setCursor(12,0);
-lcd.print("V");
+lcd.print("V   ");
 if (digitalRead(Increment)==1 )
 {
-delay(200);
+delay(100);
 StartLoadsVoltage_T2+=0.1;
 }
 if (digitalRead(Decrement)==1)
 {
-delay(200);
+delay(100);
 StartLoadsVoltage_T2-=0.1;
 }
 //-> perfect
@@ -1016,23 +1165,19 @@ if (StartLoadsVoltage_T2<0)     StartLoadsVoltage_T2=0;
 } // end while increment and decrement
 }
 //-> save to eepprom
+lcd.clear();
 EEPROM.put(20,StartLoadsVoltage_T2);
+delay(500); 
 } // end startupvoltage
 //------------------------------------ Startup Timer 1 -----------------------------------------
 void Startup_Timers()
 {
-lcd.clear();
 delay(500);
 while (digitalRead(Set)==1 )
 {
 sprintf((char*)txt,"[7] T1 ON %02d S  ",startupTIme_1);
 lcd.setCursor(0,0);
 lcd.print(txt);
-if (digitalRead(Exit)==1 )
-{
-break;     //break out of the while loop
-}
-
 //-> to make sure that the value will never be changed until the user press increment or decrement
 while (digitalRead(Increment) == 1 || digitalRead(Decrement)==1)
 {
@@ -1062,10 +1207,6 @@ while (digitalRead(Set)==1 )
 sprintf((char*)txt,"[7]T2 ON %02d S  ",startupTIme_2);
 lcd.setCursor(0,0);
 lcd.print(txt);
-if (digitalRead(Exit)==1 )
-{
-break;     //break out of the while loop
-}
  //-> to make sure that the value will never be changed until the user press increment or decrement
 while (digitalRead(Increment) == 1 || digitalRead(Decrement) == 1 )
 {
@@ -1087,20 +1228,20 @@ if  (startupTIme_2>900) startupTIme_2=900;
 if  (startupTIme_2<0) startupTIme_2=0;
 } // end while increment
 } // end first while
+lcd.clear();
 EEPROM.put(26,startupTIme_2);
+delay(500); 
 } // end startup timer
 //------------------------------------Set Time--------------------------------------------------
 void SetDS1307_Time()
 {
 DateTime now = rtc.now();
-lcd.clear();
 delay(500);
 set_ds1307_hours=now.hour();
 set_ds1307_minutes=now.minute();
 set_ds1307_day=now.day();
 set_ds1307_month=now.month();
 set_ds1307_year=now.year();
-
 currentMillis_1=0,previousMiliis_1=0;
 currentMillis_2=0;previousMiliis_2=0;
 while (digitalRead(Set)==1 )
@@ -1110,27 +1251,23 @@ while (digitalRead(Set)==1 )
 	 if(currentMillis_2-previousMiliis_2 >=500)
 	 {
 	 previousMiliis_2=currentMillis_2;
-   sprintf((char*)txt,"[8] H:%02d-M:%02d",set_ds1307_hours,set_ds1307_minutes);
-  lcd.setCursor(0,0);
-  lcd.print(txt);
+   sprintf((char*)txt,"[10] H:%02d-M:%02d ",set_ds1307_hours,set_ds1307_minutes);
+   lcd.setCursor(0,0);
+   lcd.print(txt);
 	 }
 
 	 currentMillis_1=millis();
 	 if(currentMillis_1-previousMiliis_1 >=1000)
 	 {
 	 previousMiliis_1=currentMillis_1;
-   lcd.setCursor(4,0);
+   lcd.setCursor(5,0);
 	 lcd.print("    ");
  	 }
 
-if (digitalRead(Exit)==1 )
-{
-break;     //break out of the while loop
-}
 //-> to make sure that the value will never be changed until the user press increment or decrement
 while (digitalRead(Increment) == 1 || digitalRead(Decrement)==1)
 {
-   sprintf((char*)txt,"[8] H:%02d-M:%02d",set_ds1307_hours,set_ds1307_minutes);
+   sprintf((char*)txt,"[10] H:%02d-M:%02d ",set_ds1307_hours,set_ds1307_minutes);
   lcd.setCursor(0,0);
   lcd.print(txt);
 if (digitalRead(Increment)==1 )
@@ -1155,13 +1292,11 @@ currentMillis_2=0;previousMiliis_2=0;
 delay(500); 
 while (digitalRead(Set)==1 )
 {
-
-  
    currentMillis_2=millis();
 	 if(currentMillis_2-previousMiliis_2 >=500)
 	 {
 	 previousMiliis_2=currentMillis_2;
-   sprintf((char*)txt,"[8] H:%02d-M:%02d",set_ds1307_hours,set_ds1307_minutes);
+   sprintf((char*)txt,"[10] H:%02d-M:%02d ",set_ds1307_hours,set_ds1307_minutes);
   lcd.setCursor(0,0);
   lcd.print(txt);
 	 }
@@ -1170,7 +1305,7 @@ while (digitalRead(Set)==1 )
 	 if(currentMillis_1-previousMiliis_1 >=1000)
 	 {
 	 previousMiliis_1=currentMillis_1;
-   lcd.setCursor(9,0);
+   lcd.setCursor(10,0);
 	 lcd.print("    ");
  	 }
 
@@ -1182,17 +1317,17 @@ break;     //break out of the while loop
 while (digitalRead(Increment) == 1 || digitalRead(Decrement)==1)
 {
 
-  sprintf((char*)txt,"[8] H:%02d-M:%02d",set_ds1307_hours,set_ds1307_minutes);
+  sprintf((char*)txt,"[10] H:%02d-M:%02d ",set_ds1307_hours,set_ds1307_minutes);
   lcd.setCursor(0,0);
   lcd.print(txt);
 if (digitalRead(Increment)==1 )
 {
-delay(200);
+delay(150);
 set_ds1307_minutes++;
 }
 if (digitalRead(Decrement)==1)
 {
-delay(200);
+delay(150);
 set_ds1307_minutes--;
 }
 //-> perfect
@@ -1206,7 +1341,7 @@ delay(500);
 while (digitalRead(Set)==1 )
 {
 
-sprintf(txt,"[9] %02d/%02d/%02d",set_ds1307_day,set_ds1307_month,set_ds1307_year);
+sprintf(txt,"[11] %02d/%02d/%02d",set_ds1307_day,set_ds1307_month,set_ds1307_year);
 lcd.setCursor(0,0);
 lcd.print(txt);
 if (digitalRead(Exit)==1 )
@@ -1235,7 +1370,7 @@ if (set_ds1307_day<0)     set_ds1307_day=0;
 delay(500);
 while (digitalRead(Set)==1 )
 {
-sprintf((char*)txt,"[9] %02d/%02d/%02d",set_ds1307_day,set_ds1307_month,set_ds1307_year);
+sprintf((char*)txt,"[11] %02d/%02d/%02d",set_ds1307_day,set_ds1307_month,set_ds1307_year);
 lcd.setCursor(0,0);
 lcd.print(txt);
 if (digitalRead(Exit)==1 )
@@ -1265,7 +1400,7 @@ if (set_ds1307_month<0)     set_ds1307_month=0;
 delay(500);
 while (digitalRead(Set)==1 )
 {
-sprintf((char*)txt,"[9] %02d/%02d/%02d",set_ds1307_day,set_ds1307_month,set_ds1307_year);
+sprintf((char*)txt,"[11] %02d/%02d/%02d",set_ds1307_day,set_ds1307_month,set_ds1307_year);
 lcd.setCursor(0,0);
 lcd.print(txt);
 if (digitalRead(Exit)==1 )
@@ -1292,6 +1427,86 @@ if (set_ds1307_year<0)     set_ds1307_year=0;
 } // end first while
 rtc.adjust(DateTime(set_ds1307_year, set_ds1307_month, set_ds1307_day, set_ds1307_hours, set_ds1307_minutes, 0));
 } // end setDS1307
+
+//----------------------------------SET VOLTAGE MODE-------------------------------------------
+void SetVoltageMode()
+{
+delay(500);
+while (digitalRead(Set)==1)
+{
+sprintf(txt,"[%1d] Timer Mode   ",programNumber);
+lcd.setCursor(0,0);
+lcd.print(txt); 
+
+if(RunOnBatteryVoltageMode==0)
+{
+lcd.setCursor(7,1);
+lcd.print("ON ");
+}
+if(RunOnBatteryVoltageMode==1)
+{
+lcd.setCursor(7,1);
+lcd.print("OFF");
+}
+
+while (digitalRead(Increment)==1  || digitalRead(Decrement)==1)
+{
+if(digitalRead(Increment)==1)
+{
+  delay(100);
+  RunOnBatteryVoltageMode=1;
+}
+if(digitalRead(Decrement)==1)
+{
+  delay(100);
+  RunOnBatteryVoltageMode=0;
+}
+} // end while increment and decrement 
+} // end while program
+lcd.clear();
+EEPROM.write(28,RunOnBatteryVoltageMode);    // run on battery voltage mode
+delay(500);
+} // END FUNCTION 
+
+//-------------------------------------------------------------
+void SetUPSMode()
+{
+delay(500);
+while (digitalRead(Set)==1)
+{
+sprintf(txt,"[%1d]  UPS Mode   ",programNumber);
+lcd.setCursor(0,0);
+lcd.print(txt); 
+
+if(UPSMode==0)
+{
+lcd.setCursor(7,1);
+lcd.print("OFF");
+}
+if(UPSMode==1)
+{
+lcd.setCursor(7,1);
+lcd.print("ON ");
+}
+
+while (digitalRead(Increment)==1  || digitalRead(Decrement)==1)
+{
+if(digitalRead(Increment)==1)
+{
+  delay(100);
+  UPSMode=1;
+}
+if(digitalRead(Decrement)==1)
+{
+  delay(100);
+  UPSMode=0;
+}
+} // end while increment and decrement 
+} // end while program
+lcd.clear();
+EEPROM.write(29,UPSMode); // ups mode
+delay(500);
+}
  //-------------------------------CHECK TIMER IN RANGE--------------------------------------------
  //-------------------Check for timer activation inside range--------------------
  void CheckForTimerActivationInRange()
@@ -1310,18 +1525,27 @@ rtc.adjust(DateTime(set_ds1307_year, set_ds1307_month, set_ds1307_day, set_ds130
  if(ReadHours()==hours_lcd_1)
  {
  //-> minutes must be bigger
- if(ReadMinutes()>=minutes_lcd_1) Timer_isOn=1;
+ if(ReadMinutes()>=minutes_lcd_1) 
+ {
+
+  Timer_isOn=1;
+ }
  }
  if(ReadHours()==hours_lcd_2)
  {
  //-> minutes must be less
- if(ReadMinutes()< minutes_lcd_2) Timer_isOn=1;
+ if(ReadMinutes()< minutes_lcd_2) 
+ {
+  
+  Timer_isOn=1;
+ }
  }
  }
  //------------------------------Timer 2-----------------------------------------
  if(ReadHours() > hours_lcd_timer2_start && ReadHours()< hours_lcd_timer2_stop)
  {
  Timer_2_isOn=1;
+
  }
  //-> seconds compare hours if equal now then compare minutes
  if(ReadHours()== hours_lcd_timer2_start || ReadHours()== hours_lcd_timer2_stop )
@@ -1329,12 +1553,20 @@ rtc.adjust(DateTime(set_ds1307_year, set_ds1307_month, set_ds1307_day, set_ds130
  if(ReadHours()==hours_lcd_timer2_start)
  {
  //-> minutes must be bigger
- if(ReadMinutes()>=minutes_lcd_timer2_start) Timer_2_isOn=1;
+ if(ReadMinutes()>=minutes_lcd_timer2_start) 
+ {
+ 
+  Timer_2_isOn=1;
+ }
  }
  if(ReadHours()==hours_lcd_timer2_stop)
  {
  //-> minutes must be less
- if(ReadMinutes()<minutes_lcd_timer2_stop) Timer_2_isOn=1;
+ if(ReadMinutes()<minutes_lcd_timer2_stop) 
+ {
+  
+  Timer_2_isOn=1;
+ }
  }
  }
  } // run on battery voltage mode
@@ -1348,11 +1580,13 @@ rtc.adjust(DateTime(set_ds1307_year, set_ds1307_month, set_ds1307_day, set_ds130
  if (ReadHours() < hours_lcd_1  && ReadHours() < hours_lcd_2 )
  {
  Timer_isOn=0;
+ 
  }
 
  if (ReadHours() > hours_lcd_1  && ReadHours() > hours_lcd_2 )
  {
  Timer_isOn=0;
+ 
  }
 
 
@@ -1361,6 +1595,7 @@ rtc.adjust(DateTime(set_ds1307_year, set_ds1307_month, set_ds1307_day, set_ds130
  if(ReadMinutes() < minutes_lcd_1)
  {
  Timer_isOn=0;
+ 
  }
  }
  //-> check for hours
@@ -1369,17 +1604,20 @@ rtc.adjust(DateTime(set_ds1307_year, set_ds1307_month, set_ds1307_day, set_ds130
  if(ReadMinutes() > minutes_lcd_2)
  {
  Timer_isOn=0;
+ 
  }
  }
  //----------------------------Second Timer--------------------------------------
  if (ReadHours() < hours_lcd_timer2_start  && ReadHours() < hours_lcd_timer2_stop )
  {
  Timer_2_isOn=0;
+ 
  }
 
  if (ReadHours() > hours_lcd_timer2_start  && ReadHours() > hours_lcd_timer2_stop )
  {
  Timer_2_isOn=0;
+ 
  }
 
 
@@ -1388,6 +1626,7 @@ rtc.adjust(DateTime(set_ds1307_year, set_ds1307_month, set_ds1307_day, set_ds130
  if(ReadMinutes() < minutes_lcd_timer2_start)
  {
  Timer_2_isOn=0;
+ 
  }
  }
  //-> check for hours
@@ -1396,6 +1635,7 @@ rtc.adjust(DateTime(set_ds1307_year, set_ds1307_month, set_ds1307_day, set_ds130
  if(ReadMinutes() > minutes_lcd_timer2_stop)
  {
  Timer_2_isOn=0;
+ 
  }
  }
  //--------------------------------End of Second Timer
@@ -1511,8 +1751,8 @@ EEPROM.write(4,9);  // writing start hours
 EEPROM.write(5,0);    // writing  start minutes
 EEPROM.write(6,17);    // writing off hours
 EEPROM.write(7,0);    // writing off minutes
-EEPROM.write(28,0);    // run on battery voltage mode
-EEPROM.write(29,0); // ups mode
+EEPROM.write(28,1);    // run on battery voltage mode
+EEPROM.write(29,1); // ups mode
 //**********************************************
 EEPROM.put(8,Mini_Battery_Voltage);
 EEPROM.put(12,Mini_Battery_Voltage_T2);
@@ -1580,23 +1820,27 @@ matched_timer_2_stop=CheckTimeOccuredOff(seconds_lcd_timer2_stop,minutes_lcd_tim
 if (matched_timer_1_start==1)
 {
 Timer_isOn=1;
+relayState_1=1;
 TurnOffLoadsByPass=0;
 
 //-> when grid is available and timer is on after grid so access the condition to active timer after grid is off
 if (digitalRead(AC_Available)==1 && Timer_Enable==1  && Vin_Battery >= StartLoadsVoltage && RunWithOutBattery==false )
 {
 digitalWrite(Relay_L_Solar,1);
+relayState_1=1;
 }
 //-> if run with out battery is selected
 if (digitalRead(AC_Available)==1 && Timer_Enable==1  && RunWithOutBattery==true )
 {
 digitalWrite(Relay_L_Solar,1);
+relayState_1=1;
 }
 } // end if ac_available
 //-> Turn Load off
 //******************************************************************************
 if (matched_timer_1_stop==1)
 {
+relayState_1=0;
 Timer_isOn=0;        // to continue the timer after breakout the timer when grid is available
 ///EEPROM_write(0x49,0);        //- save it to eeprom if power is cut
 //-> when grid is available and timer is on after grid so access the condition to active timer after grid is off
@@ -1606,6 +1850,7 @@ if (digitalRead(AC_Available)==1 && Timer_Enable==1  &&  RunWithOutBattery==fals
 SecondsRealTimePv_ReConnect_T1=0;
 CountSecondsRealTimePv_ReConnect_T1=0;
 digitalWrite(Relay_L_Solar,0); // relay off
+relayState_1=0;
 
 }
 if (digitalRead(AC_Available)==1 && Timer_Enable==1  && RunWithOutBattery==true  )
@@ -1614,6 +1859,7 @@ if (digitalRead(AC_Available)==1 && Timer_Enable==1  && RunWithOutBattery==true 
 SecondsRealTimePv_ReConnect_T1=0;
 CountSecondsRealTimePv_ReConnect_T1=0;
 digitalWrite(Relay_L_Solar,0); // relay off
+relayState_1=0;
 }
 }
 //}// end if of ac_available
@@ -1622,18 +1868,21 @@ digitalWrite(Relay_L_Solar,0); // relay off
 if (matched_timer_2_start==1)
 {
 Timer_2_isOn=1;
+relayState_2=1;
 TurnOffLoadsByPass=0;     // this variable just for if user shutdown loads and don't want to reactivated so it will be zeroed until next timer
 ///EEPROM_write(0x50,1);        //- save it to eeprom if power is cut
 //-> when grid is available and timer is on after grid so access the condition to active timer after grid is off
 if (digitalRead(AC_Available)==1 && Timer_Enable==1  && Vin_Battery >= StartLoadsVoltage_T2 && RunWithOutBattery==false)
 {
 digitalWrite(Relay_L_Solar_2,1);
+relayState_2=1;
 
 }
 
 if (digitalRead(AC_Available)==1 && Timer_Enable==1  && RunWithOutBattery==true)
 {
 digitalWrite(Relay_L_Solar_2,1);
+relayState_2=1;
 }
 
 } // end if ac_available
@@ -1642,6 +1891,7 @@ digitalWrite(Relay_L_Solar_2,1);
 if (matched_timer_2_stop==1)
 {
 Timer_2_isOn=0;        // to continue the timer after breakout the timer when grid is available
+relayState_2=0;
 ///EEPROM_write(0x50,0);        //- save it to eeprom if power is cut
 //-> when grid is available and timer is on after grid so access the condition to active timer after grid is off
 if (digitalRead(AC_Available)==1  && Timer_Enable==1 && RunWithOutBattery==false )
@@ -1649,6 +1899,7 @@ if (digitalRead(AC_Available)==1  && Timer_Enable==1 && RunWithOutBattery==false
 ///SolarOnGridOff_2=0; // to enter once again in the interrupt
 //for the turn off there is no need for delay
 digitalWrite(Relay_L_Solar_2,0);
+relayState_2=0;
 SecondsRealTimePv_ReConnect_T2=0;      // MUST Be zero 
 CountSecondsRealTimePv_ReConnect_T2=0; // MUST Be zero 
 
@@ -1659,6 +1910,7 @@ if (digitalRead(AC_Available)==1 && Timer_Enable==1  && RunWithOutBattery==true 
 SecondsRealTimePv_ReConnect_T2=0;
 CountSecondsRealTimePv_ReConnect_T2=0;
 digitalWrite(Relay_L_Solar_2,0); // relay off 
+relayState_2=0;
 }
 
 } // end match timer stop
@@ -1675,11 +1927,13 @@ if(SecondsRealTime >= startupTIme_1 && digitalRead(AC_Available)==0)
 {
 
 digitalWrite(Relay_L_Solar,1);
+relayState_1=1;
 }
 if(SecondsRealTime >= startupTIme_2 && digitalRead(AC_Available)==0)
 {
 
 digitalWrite(Relay_L_Solar_2,1);
+relayState_2=1;
 }
 
 } // end function of voltage protector
@@ -1696,14 +1950,18 @@ if( digitalRead(AC_Available)==0 && LoadsAlreadySwitchedOFF==0)
 LoadsAlreadySwitchedOFF=1;
 digitalWrite(Relay_L_Solar,0);
 digitalWrite(Relay_L_Solar_2,0);
+relayState_1=0;
+relayState_2=0;
 }
 if(SecondsRealTime >= startupTIme_1 && digitalRead(AC_Available)==0 && LoadsAlreadySwitchedOFF==1 )
 {
 digitalWrite(Relay_L_Solar,1);
+relayState_1=1;
 }
 if(SecondsRealTime >= startupTIme_2 && digitalRead(AC_Available)==0 && LoadsAlreadySwitchedOFF==1 )
 {
 digitalWrite(Relay_L_Solar_2,1);
+relayState_2=1;
 }
 } // end function of voltage protector
 //------------------------Functions for reactiving timers------------------------
@@ -1716,44 +1974,61 @@ if (digitalRead(AC_Available)==1 && Timer_isOn==1 && Vin_Battery >= StartLoadsVo
 
 //SecondsRealTimePv_ReConnect_T1++;
 CountSecondsRealTimePv_ReConnect_T1=1;
+ relayState_1=1;
 CountCutSecondsRealTime_T1=0;
 CutSecondsRealTime_T1=0;
 //delay(200);
-if (  SecondsRealTimePv_ReConnect_T1 > startupTIme_1)    digitalWrite(Relay_L_Solar,1);
+if (  SecondsRealTimePv_ReConnect_T1 > startupTIme_1) 
+{   
+  digitalWrite(Relay_L_Solar,1);
+ 
+}
 
 }
 if (digitalRead(AC_Available)==1 && Timer_isOn==1  && RunWithOutBattery==true && TurnOffLoadsByPass==0 && RunOnBatteryVoltageMode ==0 )
 {
 //econdsRealTimePv_ReConnect_T1++;
 CountSecondsRealTimePv_ReConnect_T1=1;
+relayState_1=1;
 CountCutSecondsRealTime_T1=0;
 CutSecondsRealTime_T1=0;
 //delay(200);
 
-if (  SecondsRealTimePv_ReConnect_T1 > startupTIme_1) digitalWrite(Relay_L_Solar,1);
-
+if (  SecondsRealTimePv_ReConnect_T1 > startupTIme_1)  
+{
+  digitalWrite(Relay_L_Solar,1);
+  
+}
 }
 //-> if the  ac is shutdown and timer is steel in the range of being on  so reactive timer 2
 if (digitalRead(AC_Available)==1 && Timer_2_isOn==1 && Vin_Battery >= StartLoadsVoltage_T2 && RunWithOutBattery==false && TurnOffLoadsByPass==0 && RunOnBatteryVoltageMode ==0)     //run with battery
 {
 //SecondsRealTimePv_ReConnect_T2++;
 CountSecondsRealTimePv_ReConnect_T2=1;
+ relayState_2=1; 
 CountCutSecondsRealTime_T2=0;
 CutSecondsRealTime_T2=0;
 //delay(50);
 if (  SecondsRealTimePv_ReConnect_T2 > startupTIme_2)
+{
  digitalWrite(Relay_L_Solar_2,1);
+
+}
 }
 
 if ( digitalRead(AC_Available)==1 && Timer_2_isOn==1 &&  RunWithOutBattery==true && TurnOffLoadsByPass==0 && RunOnBatteryVoltageMode ==0)            //run without battery
 {
 //SecondsRealTimePv_ReConnect_T2++;
 CountSecondsRealTimePv_ReConnect_T2=1;
+ relayState_2=1; 
 CountCutSecondsRealTime_T2=0;
 CutSecondsRealTime_T2=0;
 //delay(50);
 if (  SecondsRealTimePv_ReConnect_T2 > startupTIme_2)
+{
  digitalWrite(Relay_L_Solar_2,1);
+ 
+}
 }
 //-------------------------------RunOnBatteryMode-------------------------------
  if ( digitalRead(AC_Available)==1 && Vin_Battery >= StartLoadsVoltage && RunWithOutBattery==false && TurnOffLoadsByPass==0 && RunOnBatteryVoltageMode ==1 )
@@ -1761,20 +2036,30 @@ if (  SecondsRealTimePv_ReConnect_T2 > startupTIme_2)
 
 //SecondsRealTimePv_ReConnect_T1++;
 CountSecondsRealTimePv_ReConnect_T1=1;
+relayState_1=1; 
 CountCutSecondsRealTime_T1=0;
 CutSecondsRealTime_T1=0;
 //delay(200);
-if (  SecondsRealTimePv_ReConnect_T1 > startupTIme_1)     digitalWrite(Relay_L_Solar,1);
+if (  SecondsRealTimePv_ReConnect_T1 > startupTIme_1) 
+{
+      digitalWrite(Relay_L_Solar,1);
+       
+}
 }
 
 if ( digitalRead(AC_Available)==1 && Vin_Battery >= StartLoadsVoltage_T2 && RunWithOutBattery==false && TurnOffLoadsByPass==0 && RunOnBatteryVoltageMode ==1)     //run with battery
 {
 //SecondsRealTimePv_ReConnect_T2++;
 CountSecondsRealTimePv_ReConnect_T2=1;
+ relayState_2=1; 
 CountCutSecondsRealTime_T2=0;
 CutSecondsRealTime_T2=0;
 //delay(50);
-if (  SecondsRealTimePv_ReConnect_T2 > startupTIme_2) digitalWrite(Relay_L_Solar_2,1);
+if (  SecondsRealTimePv_ReConnect_T2 > startupTIme_2)
+{
+   digitalWrite(Relay_L_Solar_2,1);
+   
+}
 }
 //------------------------------Turn Off Loads----------------------------------
 //--Turn Load off when battery Voltage  is Low and AC Not available and Bypass is enabled
@@ -1816,6 +2101,7 @@ CountCutSecondsRealTime_T1=0;
 CountSecondsRealTimePv_ReConnect_T1=0;
 SecondsRealTimePv_ReConnect_T1=0;
 digitalWrite(Relay_L_Solar,0);
+ relayState_1=0; 
 }
 
 if( CutSecondsRealTime_T2>= 30 && Vin_Battery<Mini_Battery_Voltage_T2 && digitalRead(AC_Available)==1  && RunLoadsByBass==0)
@@ -1825,6 +2111,7 @@ CountCutSecondsRealTime_T2=0;
 CountSecondsRealTimePv_ReConnect_T2=0;
 SecondsRealTimePv_ReConnect_T2=0;
 digitalWrite(Relay_L_Solar_2,0);
+ relayState_2=0; 
 }
 
 } //end start timer
@@ -1839,6 +2126,7 @@ CountSecondsRealTime=0;
 SecondsRealTimePv_ReConnect_T1=0;
 CountSecondsRealTimePv_ReConnect_T1=0;
 digitalWrite(Relay_L_Solar,0);
+ relayState_1=0; 
 
 }
 
@@ -1849,6 +2137,7 @@ CountSecondsRealTime=0;
 SecondsRealTimePv_ReConnect_T2=0;
 CountSecondsRealTimePv_ReConnect_T2=0;
 digitalWrite(Relay_L_Solar_2,0);
+ relayState_2=0; 
 
 }
 
@@ -1864,6 +2153,8 @@ CountSecondsRealTimePv_ReConnect_T1=0;
 CountSecondsRealTimePv_ReConnect_T2=0;
 digitalWrite(Relay_L_Solar_2,0);
 digitalWrite(Relay_L_Solar,0);
+ relayState_1=0; 
+ relayState_2=0; 
 }
 }
 
@@ -2137,6 +2428,23 @@ int analogNoiseReducedRead(int pinNumber)
   sei();                             //Enable interrupts
   return(reading);
 }
+
+//---------------------------------------WORKING MODE----------------------------------------------
+void WorkingMode()
+{
+	if (AC_Available==0)
+	{
+		digitalWrite(Flash,1);
+	}
+	else
+	{
+	digitalWrite(Flash,1);
+  delay(500);
+  digitalWrite(Flash,0);
+  delay(500);
+  }
+
+}
 //---------------------------------------MAIN LOOP-------------------------------------------------
 void setup() {
   // put your setup code here, to run once:
@@ -2152,6 +2460,7 @@ void loop() {
   CheckForParams();
   CheckForSet(); // done 
   RunTimersNowCheck(); // done 
+  WorkingMode();   // done 
   AutoRunWithOutBatteryProtection();
   CheckForTimerActivationInRange();  // done
   CheckForTimerActivationOutRange();  // done
