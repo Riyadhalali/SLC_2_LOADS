@@ -127,7 +127,7 @@ uint32_t currentMillis_2=0,previousMiliis_2=0; // for flashing display
 uint32_t samplesReading=0;
 float sum=0 , Battery[500];
 char i=0; 
-char programNumber=1; // for setup program 
+char programNumber=0; // for setup program 
 //-> FOR RELAY STATES 
 char relayState[32];
 char relayState_1=0,relayState_2=0,relayState_3=0; // for saving relay state
@@ -199,6 +199,7 @@ int analogNoiseReducedRead(int pinNumber);
 void TimerBattery();
 void SetVoltageMode(); 
 void SetUPSMode();
+void SetDS1307_Date();
 //---------------------------------------------------------------------------------------
 void Gpio_Init()
 {
@@ -243,6 +244,14 @@ void Interrupt_INT0()
 {
 UpdateScreenTime=0; // if user pressed the button zero counter of dipslay backlight
 digitalWrite(Backlight,1);
+if(programNumber==0)
+{
+lcd.begin(16,2);
+lcd.clear();
+lcd.noCursor();
+lcd.setCursor(0,0);
+lcd.print("Loading");
+}
 } 
 //-------------------------------When Grid is Turned Off---------------------------------------------------------
 void Interrupt_INT1()
@@ -306,7 +315,7 @@ Read_Time();
 else
 {
   lcd.setCursor(0,0);
-  lcd.print("V-MODE");
+  lcd.print("V-MODE ");
 
 }
 
@@ -323,7 +332,7 @@ lcd.print(relayState);
 void Read_Time()
 {
 DateTime now = rtc.now();
-sprintf(t, "%02d:%02d:%02d", now.hour(), now.minute(), now.second());
+sprintf(t, "%02d:%02d   ", now.hour(), now.minute());
 lcd.setCursor(0,0);
 lcd.print(t);
 }
@@ -494,9 +503,10 @@ case 10 :
    {
    SetDS1307_Time();    
    }
-   break ;  
+   break ; 
 
-   default: 
+
+default: 
    sprintf(txt,"[%1d] H:%02d-M:%02d   ",programNumber,hours_lcd_1,minutes_lcd_1);
    lcd.setCursor(0,0);
    lcd.print(txt);
@@ -522,7 +532,7 @@ if(digitalRead(Decrement)==1)
   delay(150);
   programNumber--;  
 }
-if (programNumber>11)  programNumber=1;
+if (programNumber>10)  programNumber=1;
 if (programNumber<1)   programNumber=1;
 } // end while increment and decrement 
 /*
@@ -1267,7 +1277,7 @@ while (digitalRead(Set)==1 )
 //-> to make sure that the value will never be changed until the user press increment or decrement
 while (digitalRead(Increment) == 1 || digitalRead(Decrement)==1)
 {
-   sprintf((char*)txt,"[10] H:%02d-M:%02d ",set_ds1307_hours,set_ds1307_minutes);
+  sprintf((char*)txt,"[10] H:%02d-M:%02d ",set_ds1307_hours,set_ds1307_minutes);
   lcd.setCursor(0,0);
   lcd.print(txt);
 if (digitalRead(Increment)==1 )
@@ -1322,12 +1332,12 @@ while (digitalRead(Increment) == 1 || digitalRead(Decrement)==1)
   lcd.print(txt);
 if (digitalRead(Increment)==1 )
 {
-delay(150);
+delay(100);
 set_ds1307_minutes++;
 }
 if (digitalRead(Decrement)==1)
 {
-delay(150);
+delay(100);
 set_ds1307_minutes--;
 }
 //-> perfect
@@ -1335,19 +1345,15 @@ if (set_ds1307_minutes>59)    set_ds1307_minutes=0;
 if (set_ds1307_minutes<0)     set_ds1307_minutes=0;
 } // end while increment and decrement
 } // end first while
-rtc.adjust(DateTime(set_ds1307_year, set_ds1307_month, set_ds1307_day, set_ds1307_hours, set_ds1307_minutes, 0));
-//-----------------------------------------Set Date-------------------------------------------
+rtc.adjust(DateTime(set_ds1307_year,set_ds1307_month,set_ds1307_day,set_ds1307_hours, set_ds1307_minutes, 0));
+lcd.clear();
 delay(500);
+//------------------------------------------SET DATE--------------------------------------------
 while (digitalRead(Set)==1 )
 {
-
-sprintf(txt,"[11] %02d/%02d/%02d",set_ds1307_day,set_ds1307_month,set_ds1307_year);
+sprintf(txt,"[%02d] %02d/%02d/%04d",programNumber,set_ds1307_day,set_ds1307_month,set_ds1307_year);
 lcd.setCursor(0,0);
 lcd.print(txt);
-if (digitalRead(Exit)==1 )
-{
-break;     //break out of the while loop
-}
 //-> to make sure that the value will never be changed until the user press increment or decrement
 while (digitalRead(Increment) == 1 || digitalRead(Decrement)==1)
 {
@@ -1370,13 +1376,9 @@ if (set_ds1307_day<0)     set_ds1307_day=0;
 delay(500);
 while (digitalRead(Set)==1 )
 {
-sprintf((char*)txt,"[11] %02d/%02d/%02d",set_ds1307_day,set_ds1307_month,set_ds1307_year);
+sprintf(txt,"[%02d] %02d/%02d/%04d",programNumber,set_ds1307_day,set_ds1307_month,set_ds1307_year);
 lcd.setCursor(0,0);
 lcd.print(txt);
-if (digitalRead(Exit)==1 )
-{
-break;     //break out of the while loop
-}
 //-> to make sure that the value will never be changed until the user press increment or decrement
 while (digitalRead(Increment) == 1 || digitalRead(Decrement)==1)
 {
@@ -1400,13 +1402,9 @@ if (set_ds1307_month<0)     set_ds1307_month=0;
 delay(500);
 while (digitalRead(Set)==1 )
 {
-sprintf((char*)txt,"[11] %02d/%02d/%02d",set_ds1307_day,set_ds1307_month,set_ds1307_year);
+sprintf(txt,"[%02d] %02d/%02d/%04d",programNumber,set_ds1307_day,set_ds1307_month,set_ds1307_year);
 lcd.setCursor(0,0);
 lcd.print(txt);
-if (digitalRead(Exit)==1 )
-{
-break;     //break out of the while loop
-}
 //-> to make sure that the value will never be changed until the user press increment or decrement
 while (digitalRead(Increment) == 1 || digitalRead(Decrement)==1)
 {
@@ -1425,7 +1423,9 @@ if (set_ds1307_year>2030)    set_ds1307_year=0;
 if (set_ds1307_year<0)     set_ds1307_year=0;
 } // end while increment and decrement
 } // end first while
-rtc.adjust(DateTime(set_ds1307_year, set_ds1307_month, set_ds1307_day, set_ds1307_hours, set_ds1307_minutes, 0));
+rtc.adjust(DateTime(set_ds1307_year,set_ds1307_month,set_ds1307_day,set_ds1307_hours, set_ds1307_minutes, 0));
+lcd.clear();
+delay(500);
 } // end setDS1307
 
 //----------------------------------SET VOLTAGE MODE-------------------------------------------
@@ -1923,17 +1923,19 @@ if(digitalRead(AC_Available)==0 &&  UPSMode==0 )   // voltage protector is not e
 //delay(250);     // for error to get one seconds approxmiallty
 //SecondsRealTime++;
 CountSecondsRealTime=1;
+relayState_1=1;
+relayState_2=1;
 if(SecondsRealTime >= startupTIme_1 && digitalRead(AC_Available)==0)
 {
 
 digitalWrite(Relay_L_Solar,1);
-relayState_1=1;
+
 }
 if(SecondsRealTime >= startupTIme_2 && digitalRead(AC_Available)==0)
 {
 
 digitalWrite(Relay_L_Solar_2,1);
-relayState_2=1;
+
 }
 
 } // end function of voltage protector
@@ -1944,6 +1946,8 @@ relayState_2=1;
 //delay(250);       // for error to get one seconds approxmiallty
 //SecondsRealTime++;
 CountSecondsRealTime=1;
+relayState_1=1;
+relayState_2=1;
 if( digitalRead(AC_Available)==0 && LoadsAlreadySwitchedOFF==0)
 {
 
@@ -1956,12 +1960,12 @@ relayState_2=0;
 if(SecondsRealTime >= startupTIme_1 && digitalRead(AC_Available)==0 && LoadsAlreadySwitchedOFF==1 )
 {
 digitalWrite(Relay_L_Solar,1);
-relayState_1=1;
+
 }
 if(SecondsRealTime >= startupTIme_2 && digitalRead(AC_Available)==0 && LoadsAlreadySwitchedOFF==1 )
 {
 digitalWrite(Relay_L_Solar_2,1);
-relayState_2=1;
+
 }
 } // end function of voltage protector
 //------------------------Functions for reactiving timers------------------------
@@ -2180,7 +2184,7 @@ TCNT1=0;   // very important
   if(CountSecondsRealTimePv_ReConnect_T2==1) SecondsRealTimePv_ReConnect_T2++; // for counting real timer 
   if(CountCutSecondsRealTime_T1==1) CutSecondsRealTime_T1++; 
   if(CountCutSecondsRealTime_T2==1) CutSecondsRealTime_T2++; 
-if (UpdateScreenTime==180  )  // 1800 is 60 seconds to update
+if (UpdateScreenTime==180 && programNumber==0 )  // 1800 is 60 seconds to update
 {
   UpdateScreenTime=0;
   digitalWrite(Backlight,0);
@@ -2188,6 +2192,7 @@ if (UpdateScreenTime==180  )  // 1800 is 60 seconds to update
   lcd.clear();
   lcd.noCursor();
   lcd.setCursor(0,0); 
+  lcd.noDisplay();
 }
 //------------------------------------------------------------------------------------------
 TurnLoadsOffWhenGridOff(); // just to check that what matter happens the loads will switch off even if mcu got stuck 
