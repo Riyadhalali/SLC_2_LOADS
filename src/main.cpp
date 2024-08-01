@@ -223,12 +223,14 @@ lcd.begin(16,2);
 lcd.clear();
 lcd.noCursor();
 lcd.setCursor(0,0);
-lcd.print("    SLC V2.1    ");
+lcd.print("    SLC V3.0    ");
+lcd.setCursor(0,1);
+lcd.print("    KATELEC ");
 delay(1500);
 lcd.clear();
 Wire.begin();
 rtc.begin();
-Wire.setWireTimeout(3000,true);   //refe : https://www.fpaynter.com/2020/07/i2c-hangup-bug-cured-miracle-of-miracles-film-at-11/
+Wire.setWireTimeout(1000,true);   //refe : https://www.fpaynter.com/2020/07/i2c-hangup-bug-cured-miracle-of-miracles-film-at-11/
 Wire.clearWireTimeoutFlag();
 //EEPROM.begin();  
 
@@ -384,7 +386,8 @@ void CheckForSet()
 
 if (digitalRead(Set)==0 ) 
 {
-delay(1500);
+delay(1000);
+programNumber=1;
 SetUpProgram();
 }
 }
@@ -444,7 +447,7 @@ case 4 :
    }
    break ; 
 case 5 :
-  sprintf(txt,"[%1d] Low Voltage   ",programNumber,Mini_Battery_Voltage);
+  sprintf(txt,"[%1d] Low Voltage   ",programNumber);
    lcd.setCursor(0,0);
    lcd.print(txt);
    while (digitalRead(Set)==0)
@@ -453,7 +456,7 @@ case 5 :
    }
    break ; 
 case 6 :
-   sprintf(txt,"[%1d] High Voltage     ",programNumber,StartLoadsVoltage);
+   sprintf(txt,"[%1d] High Voltage     ",programNumber);
    lcd.setCursor(0,0);
    lcd.print(txt);
    while (digitalRead(Set)==0)
@@ -462,7 +465,7 @@ case 6 :
    }
    break ; 
 case 7 :
-   sprintf(txt,"[%1d] On Delay     ",programNumber,startupTIme_1);
+   sprintf(txt,"[%1d] On Delay     ",programNumber);
    lcd.setCursor(0,0);
    lcd.print(txt);
    while (digitalRead(Set)==0)
@@ -1712,6 +1715,25 @@ delay(1000);
 lcd.clear();
 }
 }
+//-----------------------------Bypass Mode -------------------------------------
+if(digitalRead(Increment)==1 && digitalRead(Decrement)==0)
+{
+delay(1000);
+if (digitalRead(Increment)==1 && digitalRead(Decrement)==0)
+{
+delay(1000);
+if (digitalRead(Increment)==1 && digitalRead(Exit)==0)
+{
+RunLoadsByBass++;
+if (  RunLoadsByBass==1 ) digitalWrite(Relay_L_Solar,1);
+if (RunLoadsByBass>=2 )
+{
+digitalWrite(Relay_L_Solar_2,1);
+}
+}
+}
+}
+//-----------------------------END BYPASS MODE--------------------------------
 }  // end function
 //-----------------------------------------EEPROM Factory Settings----------------------------
 void EEPROM_FactorySettings(char period)
@@ -1922,6 +1944,7 @@ if(digitalRead(AC_Available)==0 &&  UPSMode==0 )   // voltage protector is not e
 {
 //delay(250);     // for error to get one seconds approxmiallty
 //SecondsRealTime++;
+RunLoadsByBass=0; // to make load turn off if user manually turned on loads 
 CountSecondsRealTime=1;
 relayState_1=1;
 relayState_2=1;
@@ -1945,6 +1968,7 @@ digitalWrite(Relay_L_Solar_2,1);
 {
 //delay(250);       // for error to get one seconds approxmiallty
 //SecondsRealTime++;
+RunLoadsByBass=0; // to make load turn off if user manually turned on loads 
 CountSecondsRealTime=1;
 relayState_1=1;
 relayState_2=1;
@@ -2372,14 +2396,14 @@ EEPROM_Load();
 //----------------------Run On Battery Voltage Mode-------------------------
 if (RunOnBatteryVoltageMode < 0 || RunOnBatteryVoltageMode > 1 )
 {
-  RunOnBatteryVoltageMode=0;
+  RunOnBatteryVoltageMode=1;
   EEPROM.write(28,RunOnBatteryVoltageMode);
   EEPROM_Load();
 }
 //----------------------------UPS Mode------------------------------------
 if (UPSMode < 0 || UPSMode > 1 )
 {
-  UPSMode=0;
+  UPSMode=1;
   EEPROM.write(29,UPSMode);
   EEPROM_Load();
 }
