@@ -18,6 +18,8 @@ startuptimer_2: 26
 //----------------------------
 Runonbatteryvoltagemode: 28
 upsmode: 29 
+addError=30
+VinBatteryDifference=31~34 
 */
 #include <Arduino.h>
 #include <LiquidCrystal.h>
@@ -131,6 +133,10 @@ char programNumber=0; // for setup program
 //-> FOR RELAY STATES 
 char relayState[32];
 char relayState_1=0,relayState_2=0,relayState_3=0; // for saving relay state
+double VinBatteryDifference=0.0;
+char addError=0,MinusError=0;
+float Vin_Battery_=0.0;
+double VinBatteryError=0;
 //-------------------------------------------------------------------------------------------------------
 //-----------------------------------Functions---------------------------------
 void EEPROM_Load();
@@ -200,6 +206,7 @@ void TimerBattery();
 void SetVoltageMode(); 
 void SetUPSMode();
 void SetDS1307_Date();
+void SetBatteryVoltageError();
 //---------------------------------------------------------------------------------------
 void Gpio_Init()
 {
@@ -493,6 +500,7 @@ case 9 :
    }
    break ; 
 case 10 :
+{
    DateTime now = rtc.now();
    set_ds1307_hours=now.hour();
    set_ds1307_minutes=now.minute();
@@ -505,6 +513,16 @@ case 10 :
    while (digitalRead(Set)==0)
    {
    SetDS1307_Time();    
+   }
+   break ; 
+}
+   case 11 : 
+   sprintf(txt,"[%1d]  Batt Call  ",programNumber);
+   lcd.setCursor(0,0);
+   lcd.print(txt);
+   while (digitalRead(Set)==0)
+   {
+    SetBatteryVoltageError();
    }
    break ; 
 
@@ -535,7 +553,7 @@ if(digitalRead(Decrement)==1)
   delay(150);
   programNumber--;  
 }
-if (programNumber>10)  programNumber=1;
+if (programNumber>11)  programNumber=11;
 if (programNumber<1)   programNumber=1;
 } // end while increment and decrement 
 /*
@@ -1510,6 +1528,63 @@ lcd.clear();
 EEPROM.write(29,UPSMode); // ups mode
 delay(500);
 }
+
+//--------------------------------SET BATTERY VOLTAGE CALLIBRATION-------------------------------
+void SetBatteryVoltageError()
+{
+delay(500);
+while (digitalRead(Set)==1 )
+{
+VinBatteryError=Vin_Battery;
+sprintf(txt,"[%1d]  Batt Call  ",programNumber);
+lcd.setCursor(0,0);
+lcd.print(txt); 
+lcd.setCursor(0,1);
+dtostrf(VinBatteryError,4,1,txt);
+lcd.setCursor(6,1);
+lcd.print(txt);
+lcd.setCursor(10,1);
+lcd.print("V   ");
+if (digitalRead(Exit)==1 )
+{
+break;     //break out of the while loop
+}
+//-> to make sure that the value will never be changed until the user press increment or decrement
+while (digitalRead(Increment) == 1 || digitalRead(Decrement)==1)
+{
+sprintf(txt,"[%1d]  Batt Call  ",programNumber);
+lcd.setCursor(0,0);
+lcd.print(txt); 
+lcd.setCursor(0,1);
+dtostrf(VinBatteryError,4,1,txt);
+lcd.setCursor(6,1);
+lcd.print(txt);
+lcd.setCursor(10,1);
+lcd.print("V   ");
+if (digitalRead(Increment)==1 )
+{
+delay(50);
+VinBatteryError+=0.1;
+}
+if (digitalRead(Decrement)==1)
+{
+delay(50);
+VinBatteryError-=0.1;
+}
+if(VinBatteryError > 70.0  ) VinBatteryError=0;
+if (VinBatteryError<0) VinBatteryError=0;
+if (VinBatteryError>=Vin_Battery_) addError=1;    // add
+if (VinBatteryError<Vin_Battery_) addError=0;    // minus
+} // end while increment and decrement
+Vin_Battery=VinBatteryError;
+}
+lcd.clear();
+//-> i moved the operation to here because of errors
+VinBatteryDifference=fabs(VinBatteryError-Vin_Battery_);
+EEPROM.write(30,addError);
+EEPROM.put(31,VinBatteryDifference); 
+
+}
  //-------------------------------CHECK TIMER IN RANGE--------------------------------------------
  //-------------------Check for timer activation inside range--------------------
  void CheckForTimerActivationInRange()
@@ -1687,12 +1762,14 @@ ByPassState=0;   // enable is zero  // delete function to be programmed for rom 
 Timer_Enable=1;      // delete function to be programmed for rom space
 RunOnBatteryVoltageMode=EEPROM.read(28);
 UPSMode=EEPROM.read(29) ;   // ups mode
+addError=EEPROM.read(30);
 EEPROM.get(8,Mini_Battery_Voltage);
 EEPROM.get(16,StartLoadsVoltage);
 EEPROM.get(24,startupTIme_1);
 EEPROM.get(26,startupTIme_2);
 EEPROM.get(12,Mini_Battery_Voltage_T2);
 EEPROM.get(20,StartLoadsVoltage_T2);
+EEPROM.get(31,VinBatteryDifference);
 }
 //------------------------------------------RunTimersCheckNow---------------------------------------
 void RunTimersNowCheck()
@@ -1763,6 +1840,8 @@ StartLoadsVoltage_T2=52.0;
 }
 startupTIme_1 =90;
 startupTIme_2=120;
+addError=1;
+VinBatteryDifference=0.0;
 //*****************timer 1****************
 EEPROM.write(0,8);  // writing start hours
 EEPROM.write(1,0);    // writing  start minutes
@@ -1775,6 +1854,7 @@ EEPROM.write(6,17);    // writing off hours
 EEPROM.write(7,0);    // writing off minutes
 EEPROM.write(28,1);    // run on battery voltage mode
 EEPROM.write(29,1); // ups mode
+EEPROM.write(30,addError);
 //**********************************************
 EEPROM.put(8,Mini_Battery_Voltage);
 EEPROM.put(12,Mini_Battery_Voltage_T2);
@@ -1782,7 +1862,7 @@ EEPROM.put(16,StartLoadsVoltage);
 EEPROM.put(20,StartLoadsVoltage_T2);
 EEPROM.put(24,startupTIme_1);
 EEPROM.put(26,startupTIme_2);
-
+EEPROM.put(31,VinBatteryDifference);
 } // end if period
 }
 //----------------------------------------Check Battery System Mode------------------------------
@@ -2433,11 +2513,14 @@ Battery[samplesReading]=((10.5/0.5)*Battery_Voltage);
 sum+=Battery[samplesReading];
 if (samplesReading==500)
 {
-Vin_Battery=sum / 500.0; 
+Vin_Battery_=sum / 500.0; 
+if (addError==1) Vin_Battery=Vin_Battery_+VinBatteryDifference;
+else if(addError==0)  Vin_Battery=Vin_Battery_-VinBatteryDifference;
 sum=0;
 samplesReading=0;
 }
 }
+
 int analogNoiseReducedRead(int pinNumber)
 {
   int reading;
@@ -2481,6 +2564,7 @@ void setup() {
   Config();
   Config_Interrupts();
   EEPROM_Load();
+  
   Timer_Seconds();
   }
 
