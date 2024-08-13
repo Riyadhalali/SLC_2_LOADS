@@ -233,7 +233,7 @@ lcd.begin(16,2);
 lcd.clear();
 lcd.noCursor();
 lcd.setCursor(0,0);
-lcd.print("    SLC V3.1    ");
+lcd.print("    SLC V3.0    ");
 lcd.setCursor(0,1);
 lcd.print("    KATELEC ");
 delay(1500);
